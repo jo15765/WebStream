@@ -9,6 +9,13 @@ import {
 } from "react";
 import { fetchLibrary, saveLibrary } from "../api/http.js";
 import { reportClientDiagnostic } from "../diagnostics/clientLog.js";
+import {
+  emptyLiveCategoryLayout,
+  ensureCategoryOrder,
+  moveCategoryInOrder,
+  normalizeLiveCategoryLayout,
+  reorderCategoryIds,
+} from "../utils/liveCategoryLayout.js";
 import { usePortal } from "./PortalContext.jsx";
 
 const LEGACY_STORAGE_KEY = "webstream.library.v1";
@@ -31,7 +38,11 @@ function readLegacyLocalStore() {
 
 export function LibraryProvider({ children }) {
   const { connected, loading: portalLoading } = usePortal();
-  const [store, setStore] = useState({ favorites: [], progress: {} });
+  const [store, setStore] = useState({
+    favorites: [],
+    progress: {},
+    liveCategories: emptyLiveCategoryLayout(),
+  });
   const saveTimerRef = useRef(null);
   const hydratedRef = useRef(false);
 
@@ -39,7 +50,7 @@ export function LibraryProvider({ children }) {
     if (portalLoading) return;
     if (!connected) {
       hydratedRef.current = false;
-      setStore({ favorites: [], progress: {} });
+      setStore({ favorites: [], progress: {}, liveCategories: emptyLiveCategoryLayout() });
       return;
     }
     let cancelled = false;
@@ -50,12 +61,13 @@ export function LibraryProvider({ children }) {
         let next = {
           favorites: Array.isArray(data?.favorites) ? data.favorites : [],
           progress: data?.progress && typeof data.progress === "object" ? data.progress : {},
+          liveCategories: normalizeLiveCategoryLayout(data?.liveCategories),
         };
         const empty =
           next.favorites.length === 0 && Object.keys(next.progress).length === 0;
         const legacy = empty ? readLegacyLocalStore() : null;
         if (legacy) {
-          next = legacy;
+          next = { ...legacy, liveCategories: emptyLiveCategoryLayout() };
           try {
             await saveLibrary(next);
             localStorage.removeItem(LEGACY_STORAGE_KEY);
@@ -159,6 +171,90 @@ export function LibraryProvider({ children }) {
       .slice(0, 12);
   }, [store.progress]);
 
+  const liveCategories = store.liveCategories;
+
+  const setLiveCategoryOrder = useCallback(
+    (order) => {
+      persist((prev) => ({
+        ...prev,
+        liveCategories: {
+          ...normalizeLiveCategoryLayout(prev.liveCategories),
+          order: order.map(String),
+        },
+      }));
+    },
+    [persist],
+  );
+
+  const syncLiveCategoryOrder = useCallback(
+    (apiCategories) => {
+      persist((prev) => {
+        const layout = normalizeLiveCategoryLayout(prev.liveCategories);
+        const order = ensureCategoryOrder(apiCategories, layout);
+        if (order.join("|") === layout.order.join("|")) return prev;
+        return { ...prev, liveCategories: { ...layout, order } };
+      });
+    },
+    [persist],
+  );
+
+  const moveLiveCategory = useCallback(
+    (categoryId, delta) => {
+      persist((prev) => {
+        const layout = normalizeLiveCategoryLayout(prev.liveCategories);
+        const order = moveCategoryInOrder(layout.order, categoryId, delta);
+        if (order === layout.order) return prev;
+        return { ...prev, liveCategories: { ...layout, order } };
+      });
+    },
+    [persist],
+  );
+
+  const reorderLiveCategories = useCallback(
+    (activeId, overId) => {
+      persist((prev) => {
+        const layout = normalizeLiveCategoryLayout(prev.liveCategories);
+        const order = reorderCategoryIds(layout.order, activeId, overId);
+        if (order.join("|") === layout.order.join("|")) return prev;
+        return { ...prev, liveCategories: { ...layout, order } };
+      });
+    },
+    [persist],
+  );
+
+  const renameLiveCategory = useCallback(
+    (categoryId, label) => {
+      const id = String(categoryId);
+      const trimmed = String(label ?? "").trim();
+      persist((prev) => {
+        const layout = normalizeLiveCategoryLayout(prev.liveCategories);
+        const labels = { ...layout.labels };
+        if (trimmed) labels[id] = trimmed.slice(0, 120);
+        else delete labels[id];
+        return { ...prev, liveCategories: { ...layout, labels } };
+      });
+    },
+    [persist],
+  );
+
+  const setLiveCategoryHidden = useCallback(
+    (categoryId, hidden) => {
+      const id = String(categoryId);
+      persist((prev) => {
+        const layout = normalizeLiveCategoryLayout(prev.liveCategories);
+        const set = new Set(layout.hidden);
+        if (hidden) set.add(id);
+        else set.delete(id);
+        return { ...prev, liveCategories: { ...layout, hidden: [...set] } };
+      });
+    },
+    [persist],
+  );
+
+  const resetLiveCategories = useCallback(() => {
+    persist((prev) => ({ ...prev, liveCategories: emptyLiveCategoryLayout() }));
+  }, [persist]);
+
   const value = useMemo(
     () => ({
       favorites: store.favorites,
@@ -167,8 +263,31 @@ export function LibraryProvider({ children }) {
       saveProgress,
       getProgress,
       continueWatching,
+      liveCategories,
+      setLiveCategoryOrder,
+      syncLiveCategoryOrder,
+      moveLiveCategory,
+      reorderLiveCategories,
+      renameLiveCategory,
+      setLiveCategoryHidden,
+      resetLiveCategories,
     }),
-    [store.favorites, toggleFavorite, isFavorite, saveProgress, getProgress, continueWatching],
+    [
+      store.favorites,
+      toggleFavorite,
+      isFavorite,
+      saveProgress,
+      getProgress,
+      continueWatching,
+      liveCategories,
+      setLiveCategoryOrder,
+      syncLiveCategoryOrder,
+      moveLiveCategory,
+      reorderLiveCategories,
+      renameLiveCategory,
+      setLiveCategoryHidden,
+      resetLiveCategories,
+    ],
   );
 
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;

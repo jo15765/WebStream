@@ -1,5 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { StreamPlayer } from "../components/StreamPlayer.jsx";
 import { useCatalog } from "../hooks/useCatalog.js";
 import { decodeEpgText } from "../utils/epgText.js";
@@ -10,6 +10,14 @@ import { NowAiring } from "../components/NowAiring.jsx";
 import { useLiveNowAiring } from "../hooks/useLiveNowAiring.js";
 import { useProgressiveReveal } from "../hooks/useProgressiveReveal.js";
 import { LiveChannelRow } from "../components/LiveChannelRow.jsx";
+import { CategoryContextMenu } from "../components/CategoryContextMenu.jsx";
+import { RenameCategoryDialog } from "../components/RenameCategoryDialog.jsx";
+import {
+  buildLiveCategoryViews,
+  displayCategoryName,
+  ensureCategoryOrder,
+  normalizeLiveCategoryLayout,
+} from "../utils/liveCategoryLayout.js";
 
 function PlayGlyph() {
   return (
@@ -32,15 +40,39 @@ export function LivePage() {
   const [playing, setPlaying] = useState(null);
   const [epgFor, setEpgFor] = useState(null);
   const [isPending, startTransition] = useTransition();
-  const { toggleFavorite, isFavorite } = useLibrary();
+  const {
+    toggleFavorite,
+    isFavorite,
+    liveCategories,
+    syncLiveCategoryOrder,
+    moveLiveCategory,
+    renameLiveCategory,
+  } = useLibrary();
+  const [categoryMenu, setCategoryMenu] = useState(null);
+  const [renameTarget, setRenameTarget] = useState(null);
+
+  useEffect(() => {
+    if (categories?.length) syncLiveCategoryOrder(categories);
+  }, [categories, syncLiveCategoryOrder]);
+
+  const layout = normalizeLiveCategoryLayout(liveCategories);
+  const { views: categoryViews } = useMemo(
+    () => buildLiveCategoryViews(categories, layout),
+    [categories, layout],
+  );
+
+  const categoryOrder = useMemo(
+    () => ensureCategoryOrder(categories, layout),
+    [categories, layout],
+  );
 
   const categoryById = useMemo(() => {
     const map = new Map();
     for (const c of categories ?? []) {
-      map.set(String(c.category_id), c.category_name);
+      map.set(String(c.category_id), displayCategoryName(c, layout.labels));
     }
     return map;
-  }, [categories]);
+  }, [categories, layout.labels]);
 
   const filtered = useMemo(() => {
     const list = streams ?? [];
@@ -216,8 +248,14 @@ export function LivePage() {
       {error ? <p className="form-error">{error}</p> : null}
 
       <div className="live-layout">
-        <aside className="category-rail" aria-label="Categories">
-          <p className="rail-title">Categories</p>
+        <aside className="category-rail" aria-label="Channel groups">
+          <div className="rail-head">
+            <p className="rail-title">Groups</p>
+            <Link to="/live/categories" className="rail-organize-link">
+              Edit groups
+            </Link>
+          </div>
+          <p className="rail-hint muted">Right-click a group to rename or move</p>
           {catLoading && !categories ? (
             <div className="rail-skeleton">
               {Array.from({ length: 6 }, (_, i) => (
@@ -234,7 +272,7 @@ export function LivePage() {
                 All
                 <span className="cat-count">{streams?.length ?? "…"}</span>
               </button>
-              {(categories ?? []).map((c) => (
+              {categoryViews.map((c) => (
                 <button
                   key={c.category_id}
                   type="button"
@@ -242,8 +280,23 @@ export function LivePage() {
                     String(categoryId) === String(c.category_id) ? "cat-btn active" : "cat-btn"
                   }
                   onClick={() => onCategoryChange(String(c.category_id))}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setCategoryMenu({
+                      category: c,
+                      x: e.clientX,
+                      y: e.clientY,
+                    });
+                  }}
                 >
-                  {c.category_name}
+                  <span className="cat-btn-label">
+                    {c.displayName}
+                    {c.hasCustomLabel ? (
+                      <span className="cat-btn-badge" title={`Provider: ${c.category_name}`}>
+                        custom
+                      </span>
+                    ) : null}
+                  </span>
                 </button>
               ))}
             </>
@@ -309,6 +362,59 @@ export function LivePage() {
           )}
         </section>
       </div>
+
+      <CategoryContextMenu
+        open={Boolean(categoryMenu)}
+        x={categoryMenu?.x ?? 0}
+        y={categoryMenu?.y ?? 0}
+        canMoveUp={
+          categoryMenu
+            ? categoryOrder.indexOf(String(categoryMenu.category.category_id)) > 0
+            : false
+        }
+        canMoveDown={
+          categoryMenu
+            ? categoryOrder.indexOf(String(categoryMenu.category.category_id)) <
+              categoryOrder.length - 1
+            : false
+        }
+        onRename={() => {
+          const cat = categoryMenu?.category;
+          setCategoryMenu(null);
+          if (cat) setRenameTarget(cat);
+        }}
+        onMoveUp={() => {
+          const id = categoryMenu?.category?.category_id;
+          setCategoryMenu(null);
+          if (id != null) moveLiveCategory(id, -1);
+        }}
+        onMoveDown={() => {
+          const id = categoryMenu?.category?.category_id;
+          setCategoryMenu(null);
+          if (id != null) moveLiveCategory(id, 1);
+        }}
+        onOrganize={() => {
+          setCategoryMenu(null);
+          navigate("/live/categories");
+        }}
+        onClose={() => setCategoryMenu(null)}
+      />
+
+      <RenameCategoryDialog
+        open={Boolean(renameTarget)}
+        title={renameTarget?.displayName ?? renameTarget?.category_name ?? "Category"}
+        originalName={renameTarget?.category_name ?? ""}
+        initialValue={
+          renameTarget
+            ? layout.labels[String(renameTarget.category_id)] ?? renameTarget.displayName
+            : ""
+        }
+        onClose={() => setRenameTarget(null)}
+        onConfirm={(value) => {
+          if (renameTarget) renameLiveCategory(renameTarget.category_id, value);
+          setRenameTarget(null);
+        }}
+      />
 
       {epgFor ? (
         <div className="drawer" role="dialog">

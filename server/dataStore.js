@@ -25,12 +25,33 @@ function defaultStore() {
     library: {
       favorites: [],
       progress: {},
+      liveCategories: {
+        order: [],
+        labels: {},
+        hidden: [],
+      },
     },
   };
 }
 
 let cached = defaultStore();
 let writeChain = Promise.resolve();
+
+function normalizeLiveCategories(raw) {
+  const base = { order: [], labels: {}, hidden: [] };
+  if (!raw || typeof raw !== "object") return base;
+  const labels =
+    raw.labels && typeof raw.labels === "object" && !Array.isArray(raw.labels)
+      ? Object.fromEntries(
+          Object.entries(raw.labels).map(([k, v]) => [String(k), String(v ?? "").slice(0, 120)]),
+        )
+      : {};
+  return {
+    order: Array.isArray(raw.order) ? raw.order.map(String) : [],
+    labels,
+    hidden: Array.isArray(raw.hidden) ? raw.hidden.map(String) : [],
+  };
+}
 
 function validateDirectory(raw) {
   const trimmed = String(raw || "").trim();
@@ -57,6 +78,7 @@ function normalizeStore(raw) {
         raw?.library?.progress && typeof raw.library.progress === "object"
           ? raw.library.progress
           : base.library.progress,
+      liveCategories: normalizeLiveCategories(raw?.library?.liveCategories),
     },
   };
   try {
@@ -220,6 +242,7 @@ export async function saveLibrary(library) {
     favorites: Array.isArray(library?.favorites) ? library.favorites : [],
     progress:
       library?.progress && typeof library.progress === "object" ? library.progress : {},
+    liveCategories: normalizeLiveCategories(library?.liveCategories),
   };
   await persistStore();
   return getLibrary();

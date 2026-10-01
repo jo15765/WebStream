@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { useCatalog } from "../hooks/useCatalog.js";
+import { usePaginatedList } from "../hooks/usePaginatedList.js";
 import { MediaPoster } from "../components/MediaPoster.jsx";
 import { StreamPlayer } from "../components/StreamPlayer.jsx";
+import { CatalogPagination } from "../components/CatalogPagination.jsx";
 import { playUrl } from "../api/http.js";
 import { useLibrary } from "../state/LibraryContext.jsx";
 
@@ -30,12 +32,19 @@ export function MoviesPage() {
     return list;
   }, [movies, categoryId, query, sort]);
 
+  const paginationKey = `${categoryId}|${query}|${sort}`;
+  const { slice, total, pageSize, pageIndex, pageCount, goToPage } = usePaginatedList(
+    filtered,
+    undefined,
+    paginationKey,
+  );
+
   return (
     <div className="page">
       <header className="page-header split">
         <div>
           <h1>Movies</h1>
-          <p className="muted">{filtered.length} titles</p>
+          <p className="muted">{total} titles</p>
         </div>
         <div className="toolbar">
           <input
@@ -74,7 +83,7 @@ export function MoviesPage() {
 
       {loading ? <p className="muted">Loading library…</p> : null}
       <div className="media-grid">
-        {filtered.map((movie) => (
+        {slice.map((movie) => (
           <MediaPoster
             key={movie.stream_id}
             title={movie.name}
@@ -92,6 +101,14 @@ export function MoviesPage() {
           />
         ))}
       </div>
+
+      <CatalogPagination
+        pageCount={pageCount}
+        pageIndex={pageIndex}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={goToPage}
+      />
     </div>
   );
 }

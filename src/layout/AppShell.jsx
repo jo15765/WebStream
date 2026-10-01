@@ -13,6 +13,7 @@ function prefetchLive() {
 const NAV = [
   { to: "/", label: "Home", end: true },
   { to: "/live", label: "Live TV" },
+  { to: "/live/categories", label: "Channel groups" },
   { to: "/movies", label: "Movies" },
   { to: "/series", label: "Series" },
   { to: "/favorites", label: "Favorites" },

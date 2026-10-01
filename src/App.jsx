@@ -14,6 +14,9 @@ const HomePage = lazy(() =>
 const LivePage = lazy(() =>
   import("./pages/LivePage.jsx").then((m) => ({ default: m.LivePage })),
 );
+const LiveCategoriesPage = lazy(() =>
+  import("./pages/LiveCategoriesPage.jsx").then((m) => ({ default: m.LiveCategoriesPage })),
+);
 const MoviesPage = lazy(() =>
   import("./pages/MoviesPage.jsx").then((m) => ({ default: m.MoviesPage })),
 );
@@ -79,6 +82,14 @@ export default function App() {
           element={
             <LazyPage>
               <HomePage />
+            </LazyPage>
+          }
+        />
+        <Route
+          path="live/categories"
+          element={
+            <LazyPage>
+              <LiveCategoriesPage />
             </LazyPage>
           }
         />

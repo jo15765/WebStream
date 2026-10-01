@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCatalog } from "../hooks/useCatalog.js";
+import { usePaginatedList } from "../hooks/usePaginatedList.js";
 import { MediaPoster } from "../components/MediaPoster.jsx";
+import { CatalogPagination } from "../components/CatalogPagination.jsx";
 import { useLibrary } from "../state/LibraryContext.jsx";
 
 export function SeriesPage() {
@@ -25,12 +27,19 @@ export function SeriesPage() {
     return list;
   }, [series, categoryId, query]);
 
+  const paginationKey = `${categoryId}|${query}`;
+  const { slice, total, pageSize, pageIndex, pageCount, goToPage } = usePaginatedList(
+    filtered,
+    undefined,
+    paginationKey,
+  );
+
   return (
     <div className="page">
       <header className="page-header split">
         <div>
           <h1>Series</h1>
-          <p className="muted">{filtered.length} shows</p>
+          <p className="muted">{total} shows</p>
         </div>
         <div className="toolbar">
           <input
@@ -52,7 +61,7 @@ export function SeriesPage() {
 
       {loading ? <p className="muted">Loading series…</p> : null}
       <div className="media-grid">
-        {filtered.map((show) => (
+        {slice.map((show) => (
           <MediaPoster
             key={show.series_id}
             title={show.name}
@@ -70,6 +79,14 @@ export function SeriesPage() {
           />
         ))}
       </div>
+
+      <CatalogPagination
+        pageCount={pageCount}
+        pageIndex={pageIndex}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={goToPage}
+      />
     </div>
   );
 }

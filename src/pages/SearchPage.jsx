@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useCatalog } from "../hooks/useCatalog.js";
 import { useLibrary } from "../state/LibraryContext.jsx";
+import { displayCategoryName } from "../utils/liveCategoryLayout.js";
 import { useLiveNowAiring } from "../hooks/useLiveNowAiring.js";
 import { imageUrl, livePlayUrl, playUrl } from "../api/http.js";
 import { StreamPlayer } from "../components/StreamPlayer.jsx";
@@ -46,21 +47,22 @@ function liveFavoriteItem(ch) {
 export function SearchPage() {
   const navigate = useNavigate();
   const { data: live } = useCatalog("get_live_streams");
-  const { data: liveCategories } = useCatalog("get_live_categories");
+  const { data: liveCategoryList } = useCatalog("get_live_categories");
   const { data: movies } = useCatalog("get_vod_streams");
   const { data: series } = useCatalog("get_series");
-  const { toggleFavorite, isFavorite } = useLibrary();
+  const { toggleFavorite, isFavorite, liveCategories: liveCategoryLayout } = useLibrary();
   const [q, setQ] = useState("");
   const [playingLive, setPlayingLive] = useState(null);
   const [playingMovie, setPlayingMovie] = useState(null);
 
   const categoryById = useMemo(() => {
     const map = new Map();
-    for (const c of liveCategories ?? []) {
-      map.set(String(c.category_id), c.category_name);
+    const labels = liveCategoryLayout?.labels ?? {};
+    for (const c of liveCategoryList ?? []) {
+      map.set(String(c.category_id), displayCategoryName(c, labels));
     }
     return map;
-  }, [liveCategories]);
+  }, [liveCategoryList, liveCategoryLayout]);
 
   const needle = q.trim().toLowerCase();
 
